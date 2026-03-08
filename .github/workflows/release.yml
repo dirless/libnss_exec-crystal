@@ -1,0 +1,69 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    name: Build ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Crystal
+        run: curl -fsSL https://crystal-lang.org/install.sh | sudo bash
+
+      - name: Build libnss_exec.so.2
+        run: make build
+
+      - name: Verify exported symbols
+        run: make symbols
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libnss_exec-${{ matrix.arch }}
+          path: libnss_exec.so.2
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download x86_64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: libnss_exec-x86_64
+          path: dist/x86_64
+
+      - name: Download aarch64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: libnss_exec-aarch64
+          path: dist/aarch64
+
+      - name: Rename artifacts
+        run: |
+          mv dist/x86_64/libnss_exec.so.2 dist/libnss_exec.so.2-x86_64
+          mv dist/aarch64/libnss_exec.so.2 dist/libnss_exec.so.2-aarch64
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/libnss_exec.so.2-x86_64
+            dist/libnss_exec.so.2-aarch64
+          generate_release_notes: true
