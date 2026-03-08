@@ -20,8 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Crystal
-        run: curl -fsSL https://crystal-lang.org/install.sh | sudo bash
+      - uses: crystal-lang/install-crystal@v1
 
       - name: Build libnss_exec.so.2
         run: make build
