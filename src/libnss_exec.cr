@@ -198,6 +198,7 @@ private def read_pipe_output(fd : Int32, out_buf : UInt8*, out_size : LibC::Size
     drain = uninitialized UInt8[256]
     loop do
       bytes = LibC.read(fd, drain.to_unsafe.as(Void*), 256_u64)
+      next if bytes < 0 && Errno.value == Errno::EINTR
       break if bytes <= 0
     end
     return 0_u64
@@ -209,6 +210,7 @@ private def read_pipe_output(fd : Int32, out_buf : UInt8*, out_size : LibC::Size
     remaining = out_size &- total &- 1
     break if remaining == 0
     bytes = LibC.read(fd, (out_buf + total).as(Void*), remaining)
+    next if bytes < 0 && Errno.value == Errno::EINTR
     break if bytes <= 0
     total = total &+ bytes.to_u64
   end
@@ -317,7 +319,7 @@ private def get_field(line : UInt8*, line_len : LibC::SizeT, field : Int32) : {U
   pos = 0_u64
   current_field = 0
 
-  while pos <= line_len
+  while pos < line_len || (pos == line_len && current_field == field)
     if current_field == field
       # Find end of this field
       end_pos = pos
@@ -331,6 +333,7 @@ private def get_field(line : UInt8*, line_len : LibC::SizeT, field : Int32) : {U
     while pos < line_len && line[pos] != ':'.ord.to_u8
       pos += 1
     end
+    break if pos >= line_len
     pos += 1 # skip the ':'
     current_field += 1
   end
