@@ -10,7 +10,7 @@ description: |
   Uses raw C library calls only — no GC, no Crystal runtime dependencies.
   Safe for dlopen() loading by glibc.
 
-crystal: ">= 1.0.0"
+crystal: ">= 1.20.0"
 license: MIT
 
 development_dependencies:
