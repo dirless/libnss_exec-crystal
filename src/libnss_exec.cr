@@ -45,6 +45,7 @@ lib LibC
   fun memset(s : Void*, c : Int, n : SizeT) : Void*
   fun fcntl(fd : Int, cmd : Int, ...) : Int
   fun getenv(name : UInt8*) : UInt8*
+  fun realloc(ptr : Void*, size : SizeT) : Void*
 end
 
 # ─── Constants ───────────────────────────────────────────────────────────────
@@ -733,4 +734,59 @@ fun _nss_exec_getspnam_r(name : UInt8*, result : LibC::Spwd*,
   return NSS_STATUS_NOTFOUND if bytes == 0
 
   fill_shadow(out_buf.to_unsafe, bytes, result, buffer, buflen, errnop)
+end
+
+# ── initgroups ──
+
+# Return all supplementary GIDs for *user* in a single exec instead of
+# letting glibc iterate every group via getgrent_r.  This reduces `id`
+# from O(N_groups) fork/exec calls to a single one.
+fun _nss_exec_initgroups_dyn(
+  user : UInt8*, group : LibC::GidT,
+  start : LibC::Long*, size : LibC::Long*,
+  groupsp : LibC::GidT**, limit : LibC::Long,
+  errnop : LibC::Int*
+) : LibC::Int
+  out_buf = uninitialized UInt8[READ_BUF_SIZE]
+  status, bytes = exec_script("initgroups".to_unsafe, user, out_buf.to_unsafe, READ_BUF_SIZE.to_u64)
+  return NSS_STATUS_SUCCESS if status != NSS_STATUS_SUCCESS || bytes == 0
+
+  i = 0_u64
+  while i < bytes
+    while i < bytes && out_buf[i] == ' '.ord.to_u8
+      i += 1
+    end
+    break if i >= bytes
+
+    num_start = i
+    while i < bytes && out_buf[i] >= '0'.ord.to_u8 && out_buf[i] <= '9'.ord.to_u8
+      i += 1
+    end
+    next if i == num_start
+
+    gid_val, ok = parse_u32(out_buf.to_unsafe + num_start, i - num_start)
+    next unless ok
+
+    gid = LibC::GidT.new(gid_val)
+    next if gid == group
+
+    break if limit > 0 && start.value >= limit
+
+    if start.value >= size.value
+      new_size = size.value * 2
+      new_size = 16_i64 if new_size < 16
+      new_ptr = LibC.realloc(groupsp.value.as(Void*), (new_size.to_u64 * sizeof(LibC::GidT).to_u64))
+      if new_ptr.null?
+        errnop.value = 12 # ENOMEM
+        return NSS_STATUS_TRYAGAIN
+      end
+      groupsp.value = new_ptr.as(LibC::GidT*)
+      size.value = new_size
+    end
+
+    groupsp.value[start.value] = gid
+    start.value = start.value + 1
+  end
+
+  NSS_STATUS_SUCCESS
 end
