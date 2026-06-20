@@ -19,3 +19,4 @@ shard.lock
 *.swp
 *~
 .DS_Store
+CLAUDE.md
